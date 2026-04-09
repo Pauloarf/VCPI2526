@@ -23,7 +23,13 @@ def balance_dataset(src_path, dest_path, target_count=2000, options=None):
             'rotate': True,
             'affine': True,
             'color': True,
-            'perspective': True
+            'perspective': True,
+            'blur': True,
+            'sharpness': True,
+            'grayscale': True,            
+            # Perlin noise may be interesting as professor said
+            # Their is no noise in the v2 though, we need to do it ourselfs
+            'noise': False,
         }
 
     print(f"Balancing dataset from {src_path} to {dest_path}")
@@ -46,9 +52,15 @@ def balance_dataset(src_path, dest_path, target_count=2000, options=None):
         aug_list.append(v2.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2))
     if options.get('perspective'):
         aug_list.append(v2.RandomPerspective(distortion_scale=0.2, p=0.5))
+    if options.get('blur'):
+        aug_list.append(v2.RandomApply([v2.GaussianBlur(kernel_size=3)], p=0.3))
+    if options.get('sharpness'):
+        aug_list.append(v2.RandomAdjustSharpness(sharpness_factor=2, p=0.3))
+    if options.get('grayscale'):
+        aug_list.append(v2.RandomGrayscale(p=0.2))
 
     # Always resize to ensure consistency
-    aug_list.append(v2.Resize((32, 32)))
+    # aug_list.append(v2.Resize((32, 32)))
     # We work with PIL images here for saving back to disk
     aug_transform = v2.Compose(aug_list)
 
