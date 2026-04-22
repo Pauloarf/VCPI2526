@@ -6,7 +6,46 @@ import torch
 from PIL import Image
 import util.vcpi_util as vcpi_util
 from torchvision.transforms import v2
+from torchvision.transforms.functional import to_tensor, to_pil_image
+from PIL import Image
 
+
+class RandomSmoothNoise(torch.nn.Module):
+    """
+    Aproximação rápida de Perlin Noise aconselhada pelo GEMINI (O perlin noise real era muito lento).
+    Gera ruído de baixa frequência (manchas suaves) para simular sujidade ou sombras.
+    """
+    def __init__(self, noise_level=0.15, grid_size=4, p=0.5):
+        super().__init__()
+        self.noise_level = noise_level
+        self.grid_size = grid_size # Matriz inicial (valores menores = manchas maiores)
+        self.p = p
+
+    def forward(self, img):
+        if torch.rand(1).item() > self.p:
+            return img
+        
+        # Converter PIL para Tensor para operações matemáticas rápidas
+        tensor_img = to_tensor(img)
+        c, h, w = tensor_img.shape
+        
+        # 1. Gerar ruído aleatório numa grelha minúscula (ex: 3x4x4) [-1, 1]
+        low_res_noise = torch.rand(c, self.grid_size, self.grid_size) * 2 - 1
+        
+        # 2. Esticar a grelha para o tamanho da imagem usando interpolação bicúbica (cria o efeito Perlin)
+        noise = torch.nn.functional.interpolate(
+            low_res_noise.unsqueeze(0), 
+            size=(h, w), 
+            mode='bicubic', 
+            align_corners=False
+        ).squeeze(0)
+        
+        # 3. Adicionar o ruído à imagem e garantir que os pixeis ficam entre 0 e 1
+        noisy_img = tensor_img + noise * self.noise_level
+        noisy_img = torch.clamp(noisy_img, 0.0, 1.0)
+        
+        # Voltar a PIL Image para o teu pipeline de gravação
+        return to_pil_image(noisy_img)
 
 def show_random_samples(dataset, classes, title="Dataset Samples", num_rows=3, num_cols=5):
     """
@@ -75,19 +114,11 @@ def create_train_val_split(origin_path="datasets/origin_train_images", train_pat
     print(f"Split complete. Train and Val folders created in {os.path.dirname(train_path)} with a split_ration of {split_ratio}")
 
 
-def balance_dataset(src_path="datasets/train_images", dest_path="datasets/train_balanced", target_count=2000, options=None):
+def balance_dataset(src_path="datasets/train_images", dest_path="datasets/train_balanced", target_count=500, options=None):
     """
     Balances the dataset by augmenting minority classes using torchvision.transforms.v2.
-    
-    What: This function ensures every class has at least `target_count` images.
-    Why: To prevent the model from being biased towards majority classes and improve generalization.
-    
-    Parameters:
-    - src_path: Path to the original training images (e.g., datasets/train_images).
-    - dest_path: Path where the balanced dataset will be stored (e.g., datasets/train_balanced).
-    - target_count: The desired number of images per class (default: 2000).
-    - options: Dictionary of augmentation flags ('rotate', 'affine', 'color', 'perspective').
     """
+    # Corrigido para os defaults otimizados que falámos
     if options is None:
         options = {
             'rotate': True,
@@ -95,12 +126,9 @@ def balance_dataset(src_path="datasets/train_images", dest_path="datasets/train_
             'color': True,
             'perspective': True,
             'blur': True,
-            'sharpness': True,
-            'grayscale': True,            
-
-            # Perlin noise may be interesting as professor said
-            # Their is no noise in the v2 though, we need to do it ourselfs
-            'noise': False,
+            'sharpness': False, # Desligado (inútil/prejudicial)
+            'grayscale': False, # Desligado (destrói semântica do sinal)
+            'noise': True,      # Ativado para usar o SmoothNoise
         }
 
     print(f"Balancing dataset from {src_path} to {dest_path}")
@@ -113,14 +141,14 @@ def balance_dataset(src_path="datasets/train_images", dest_path="datasets/train_
     
     os.makedirs(dest_path)
 
-    # Define the base transformations based on options
+    # Definir transformações
     aug_list = []
     if options.get('rotate'):
         aug_list.append(v2.RandomRotation(degrees=15))
     if options.get('affine'):
         aug_list.append(v2.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=10))
     if options.get('color'):
-        aug_list.append(v2.ColorJitter(brightness=0.5, contrast=0.2, saturation=0.2))
+        aug_list.append(v2.ColorJitter(brightness=0.4, contrast=0.2, saturation=0.2))
     if options.get('perspective'):
         aug_list.append(v2.RandomPerspective(distortion_scale=0.2, p=0.5))
     if options.get('blur'):
@@ -128,11 +156,11 @@ def balance_dataset(src_path="datasets/train_images", dest_path="datasets/train_
     if options.get('sharpness'):
         aug_list.append(v2.RandomAdjustSharpness(sharpness_factor=2, p=0.3))
     if options.get('grayscale'):
-        aug_list.append(v2.RandomGrayscale(p=0.5))
+        aug_list.append(v2.RandomGrayscale(p=0.3))
+    if options.get('noise'):
+        # Adiciona a nossa aproximação de Perlin com 50% de probabilidade
+        aug_list.append(RandomSmoothNoise(noise_level=0.15, p=0.5))
 
-    # Always resize to ensure consistency
-    # aug_list.append(v2.Resize((32, 32)))
-    # We work with PIL images here for saving back to disk
     aug_transform = v2.Compose(aug_list)
 
     classes = sorted([d for d in os.listdir(src_path) if os.path.isdir(os.path.join(src_path, d))])
@@ -145,21 +173,21 @@ def balance_dataset(src_path="datasets/train_images", dest_path="datasets/train_
         files = [f for f in os.listdir(src_cls_path) if f.endswith('.ppm') or f.endswith('.png')]
         num_files = len(files)
         
-        # 1. Copy original files
+        # 1. Copiar ficheiros originais
         for f in files:
             shutil.copy(os.path.join(src_cls_path, f), os.path.join(dest_cls_path, f))
 
-        # 2. Augment if necessary
+        # 2. Augmentar se necessário
         if num_files < target_count:
             num_to_augment = target_count - num_files
             for i in range(num_to_augment):
                 original_file = random.choice(files)
-                img = Image.open(os.path.join(src_cls_path, original_file))
+                img = Image.open(os.path.join(src_cls_path, original_file)).convert('RGB') # Evita erros de canais se a imagem for RGBA ou grelha
 
-                # Apply the composed transformations
+                # Aplicar transformações
                 new_img = aug_transform(img)
 
-                # Save as PNG
+                # Guardar imagem sintética
                 new_filename = f"aug_{i}_{original_file.replace('.ppm', '.png')}"
                 new_img.save(os.path.join(dest_cls_path, new_filename))
 

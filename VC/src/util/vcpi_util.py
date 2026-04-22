@@ -33,6 +33,32 @@ def show_history(history):
         plt.xlabel('epoch')
         plt.show()
 
+def show_history_2x2(history):
+    fig, axs = plt.subplots(2, 2, figsize=(12, 10))
+    
+    # Accuracy
+    axs[0, 0].plot(history['accuracy'], color='blue')
+    axs[0, 0].set_title('Training Accuracy')
+    axs[0, 0].set_ylabel('Accuracy (%)')
+    
+    axs[0, 1].plot(history['val_acc'], color='orange')
+    axs[0, 1].set_title('Validation Accuracy')
+    
+    # Loss
+    axs[1, 0].plot(history['loss'], color='green')
+    axs[1, 0].set_title('Training Loss')
+    axs[1, 0].set_ylabel('Loss')
+    axs[1, 0].set_xlabel('Epoch')
+    
+    axs[1, 1].plot(history['val_loss'], color='red')
+    axs[1, 1].set_title('Validation Loss')
+    axs[1, 1].set_xlabel('Epoch')
+    
+    for ax in axs.flat:
+        ax.grid(True, linestyle='--', alpha=0.6)
+        
+    plt.tight_layout()
+    plt.show()
 
 def show_histories(histories, model_names, field='accuracy'):
 
