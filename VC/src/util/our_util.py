@@ -2,6 +2,8 @@ import random
 import os
 import shutil
 import torch
+import numpy as np
+import cv2
 
 from PIL import Image
 import util.vcpi_util as vcpi_util
@@ -192,6 +194,55 @@ def balance_dataset(src_path="datasets/train_images", dest_path="datasets/train_
                 new_img.save(os.path.join(dest_cls_path, new_filename))
 
     print("Balancing complete.")
+
+class CLAHE_Transform:
+    """
+    Applies CLAHE (Contrast Limited Adaptive Histogram Equalization) on the L channel
+    of the LAB color space, preserving hue and saturation.
+    Particularly effective for traffic signs captured under uneven lighting or shadows.
+    """
+    def __init__(self, clip_limit=2.0, tile_size=(4, 4)):
+        self.clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=tile_size)
+
+    def __call__(self, img):
+        img_np = np.array(img)
+        lab = cv2.cvtColor(img_np, cv2.COLOR_RGB2LAB)
+        lab[:, :, 0] = self.clahe.apply(lab[:, :, 0])
+        img_np = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+        return Image.fromarray(img_np)
+
+
+class GammaCorrection:
+    """
+    Randomly adjusts image gamma to simulate varying lighting conditions.
+    gamma < 1 brightens dark images; gamma > 1 darkens bright ones.
+    """
+    def __init__(self, gamma_range=(0.5, 2.0)):
+        self.gamma_range = gamma_range
+
+    def __call__(self, img):
+        gamma = random.uniform(*self.gamma_range)
+        img_np = np.array(img) / 255.0
+        img_np = np.power(img_np, gamma)
+        return Image.fromarray((img_np * 255).astype(np.uint8))
+
+
+def get_mean_std(dataset):
+    """
+    Computes the per-channel mean and standard deviation of a dataset.
+    Used to normalize images to zero mean and unit variance before training.
+    """
+    loader = torch.utils.data.DataLoader(dataset, batch_size=256, shuffle=False)
+    mean = torch.zeros(3)
+    std  = torch.zeros(3)
+    for imgs, _ in loader:
+        for c in range(3):
+            mean[c] += imgs[:, c, :, :].mean()
+            std[c]  += imgs[:, c, :, :].std()
+    mean /= len(loader)
+    std  /= len(loader)
+    return mean, std
+
 
 if __name__ == "__main__":
     SRC = 'datasets/train_images'
