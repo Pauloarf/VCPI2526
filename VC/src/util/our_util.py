@@ -56,11 +56,11 @@ def show_random_samples(dataset, classes, title="Dataset Samples", num_rows=3, n
     Why: To visually inspect the data and ensure loading/transforms are correct.
     """
     indices = random.sample(range(len(dataset)), num_rows * num_cols)
+    
     images = [dataset[i][0] for i in indices]
     targets = [dataset[i][1] for i in indices]
     
-    print(title)
-    vcpi_util.show_images(num_rows, num_cols, images, targets, classes)
+    vcpi_util.show_images(title, num_rows, num_cols, images, targets, classes)
 
 def create_train_val_split(origin_path="datasets/origin_train_images", train_path="datasets/train_images", val_path="datasets/val_images", split_ratio=0.2):
     """
@@ -128,9 +128,9 @@ def balance_dataset(src_path="datasets/train_images", dest_path="datasets/train_
             'color': True,
             'perspective': True,
             'blur': True,
-            'sharpness': False, # Desligado (inútil/prejudicial)
-            'grayscale': False, # Desligado (destrói semântica do sinal)
-            'noise': True,      # Ativado para usar o SmoothNoise
+            'sharpness': False, 
+            'grayscale': False, 
+            'noise': True,      
         }
 
     print(f"Balancing dataset from {src_path} to {dest_path}")
@@ -160,7 +160,6 @@ def balance_dataset(src_path="datasets/train_images", dest_path="datasets/train_
     if options.get('grayscale'):
         aug_list.append(v2.RandomGrayscale(p=0.3))
     if options.get('noise'):
-        # Adiciona a nossa aproximação de Perlin com 50% de probabilidade
         aug_list.append(RandomSmoothNoise(noise_level=0.15, p=0.5))
 
     aug_transform = v2.Compose(aug_list)

@@ -17,6 +17,7 @@ def show_history_plus(history, fields):
         plt.title('model accuracy')
         plt.ylabel('accuracy')
         plt.xlabel('epoch')
+    
     plt.legend(list(history.keys()), loc='lower right')
     plt.show()
 
@@ -92,15 +93,17 @@ def show_histogram(data, classes):
 
     target_np = [x.numpy().item() for x in data]
     res = Counter(target_np)
+    
     print(res)
 
     values = [res[x] for x in range(len(classes))]
     indexes = np.arange(len(classes))
 
-
-    plt.bar(indexes, values, 1)
-    plt.xticks(indexes , classes, rotation=45, ha='right')
-    plt.show()   
+    plt.figure(figsize=(14, 6))
+    plt.bar(indexes, values, width=0.7, edgecolor='black', linewidth=0.5)
+    plt.xticks(indexes, classes, rotation=45, ha='right', fontsize=9)
+    plt.tight_layout()    
+    plt.show() 
 
 
 def show_confusion_matrix(ground_truth, preds, num_classes):    
@@ -114,6 +117,49 @@ def show_confusion_matrix(ground_truth, preds, num_classes):
     sn.heatmap(df_cm, annot=True, annot_kws={"size": 10} , fmt='.3f') # font size
 
     plt.show()
+
+def show_filtered_confusion_matrix(ground_truth, preds, classes):    
+    # 1. Calcular a matriz de confusão bruta
+    cf_matrix = confusion_matrix(ground_truth, preds)
+    
+    # 2. Criar uma cópia e zerar a diagonal para isolar apenas os erros
+    error_matrix = cf_matrix.copy()
+    np.fill_diagonal(error_matrix, 0)
+    
+    # 3. Encontrar os índices das classes que tiveram erros (na linha ou na coluna)
+    # Row sum > 0 significa que a classe foi confundida com outra
+    # Col sum > 0 significa que outra classe foi erradamente classificada como esta
+    error_indices = np.where((error_matrix.sum(axis=1) > 0) | (error_matrix.sum(axis=0) > 0))[0]
+    
+    if len(error_indices) == 0:
+        print("Perfeito! O modelo não cometeu nenhum erro no conjunto de teste.")
+        return
+
+    # 4. Filtrar a matriz original e a lista de nomes das classes
+    filtered_matrix = cf_matrix[error_indices][:, error_indices]
+    filtered_class_names = [classes[i] for i in error_indices]
+    
+    # 5. Normalizar a matriz filtrada (proporção por linha - Recall)
+    # Adicionamos um pequeno valor (1e-9) para evitar divisões por zero se uma classe tiver 0 amostras
+    row_sums = filtered_matrix.sum(axis=1)[:, np.newaxis]
+    row_sums[row_sums == 0] = 1 
+    df_cm = pd.DataFrame(filtered_matrix / row_sums, index=filtered_class_names, columns=filtered_class_names)
+    
+    # 6. Ajustar o tamanho do gráfico dinamicamente com base no número de classes com erro
+    num_error_classes = len(error_indices)
+    plt.figure(figsize=(max(10, num_error_classes * 0.5), max(8, num_error_classes * 0.4)))
+    
+    # 7. Plotar o Heatmap apenas com o essencial
+    # Usamos o cmap 'Blues' ou 'Oranges' para destacar visualmente onde estão os erros fora da diagonal
+    sn.heatmap(df_cm, annot=True, annot_kws={"size": 9}, fmt='.2f', cmap='Blues')
+    
+    plt.title("Matriz de Confusão Filtrada (Apenas classes com erros)", fontsize=12, pad=15)
+    plt.ylabel("Classe Real", fontsize=10)
+    plt.xlabel("Classe Prevista", fontsize=10)
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    plt.show()
     
 
 def show_loaded_images(rows, cols, data,classes):
@@ -121,8 +167,7 @@ def show_loaded_images(rows, cols, data,classes):
     width= 2 * rows
     height= 2 * cols
 
-    f, axes= plt.subplots(rows,cols,figsize=(height,width))
-    fig=plt.figure()
+    fig, axes= plt.subplots(rows,cols,figsize=(height,width))
 
     for a in range(rows*cols):
         img, label = data[a]
@@ -130,6 +175,7 @@ def show_loaded_images(rows, cols, data,classes):
         axes.ravel()[a].set_title(subplot_title)  
         axes.ravel()[a].imshow(np.transpose(img.numpy(), (1,2,0)), cmap=plt.cm.gray)
         axes.ravel()[a].axis('off')
+    
     fig.tight_layout()    
     plt.show() 
 
@@ -139,8 +185,7 @@ def show_transformed_images(rows, cols, data, classes):
     width= 2 * rows
     height= 2 * cols
 
-    f, axes= plt.subplots(rows,cols,figsize=(height,width))
-    fig=plt.figure()
+    fig, axes= plt.subplots(rows,cols,figsize=(height,width))
 
     for a in range(rows*cols):
         img, target = data[a]
@@ -148,6 +193,7 @@ def show_transformed_images(rows, cols, data, classes):
         axes.ravel()[a].set_title(subplot_title)  
         axes.ravel()[a].imshow(np.transpose(img.numpy(),(1,2,0)), cmap=plt.cm.gray)
         axes.ravel()[a].axis('off')
+
     fig.tight_layout()    
     plt.show()         
 
@@ -156,23 +202,22 @@ def show_predicted_images(rows, cols, data, classes):
     width= 2 * rows
     height= 2 * cols
 
-    f, axes= plt.subplots(rows,cols,figsize=(height,width))
-    fig=plt.figure()
+    fig, axes= plt.subplots(rows,cols,figsize=(height,width))
 
     for a in range(rows*cols):
         img = data[a]
         axes.ravel()[a].imshow(np.transpose(img.numpy(),(1,2,0)), cmap=plt.cm.gray)
         axes.ravel()[a].axis('off')
+
     fig.tight_layout()    
     plt.show()         
 
-def show_images(rows, cols, images, targets, classes):
+def show_images(title, rows, cols, images, targets, classes):
 
     width= 2 * rows
     height= 2 * cols
 
-    f, axes= plt.subplots(rows,cols,figsize=(height,width))
-    fig=plt.figure()
+    fig, axes= plt.subplots(rows,cols,figsize=(height,width))
 
     for a in range(rows*cols):
         img, target = images[a], targets[a]
@@ -180,6 +225,8 @@ def show_images(rows, cols, images, targets, classes):
         axes.ravel()[a].set_title(subplot_title)  
         axes.ravel()[a].imshow(np.transpose(img.numpy(),(1,2,0)), cmap=plt.cm.gray)
         axes.ravel()[a].axis('off')
+    
+    fig.suptitle(title, fontsize=16)
     fig.tight_layout()    
     plt.show()      
 
